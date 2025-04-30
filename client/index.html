@@ -8,9 +8,13 @@
 </head>
 <body>
     <div id="chat-container">
+        <!-- Show the number of users currently online -->
+        <div id="user-count">Users Online: 0</div>
         <ul id="messages"></ul>
         <div id="input-area">
-            <input id="message-input" autocomplete="off" /><button id="send-button">Send</button>
+            <input id="message-input" autocomplete="off" />
+            <button id="send-button">Send</button>
+            <span id="word-count">0 / 500 characters</span>
         </div>
     </div>
 
@@ -19,4 +23,4 @@
     <!-- Use url_for to generate the correct path -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
-</html> 
+</html>
