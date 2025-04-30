@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const messages = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendButton = document.getElementById('send-button');
+    const wordCountDisplay = document.getElementById('word-count');
 
     // Function to add a message to the chat window
     function addMessage(msg) {
@@ -22,6 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessage(data.msg);
     });
 
+    // Show notices (e.g., word limit errors or votekick updates)
+    socket.on('notice', (data) => {
+        addMessage(`[Server]: ${data.msg}`);
+    });
+
+    // Update user count from server
+    socket.on('user_count', (data) => {
+        const userCountDiv = document.getElementById('user-count');
+        userCountDiv.textContent = `Users Online: ${data.count}`;
+    });
+
     // Send message when send button is clicked
     sendButton.addEventListener('click', () => {
         const message = messageInput.value.trim();
@@ -29,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.emit('message', { msg: message });
             messageInput.value = '';
             messageInput.focus();
+            wordCountDisplay.textContent = '0 / 500 characters'; // Reset character count
         }
     });
 
@@ -40,17 +53,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Live update character count and block input at 500 chars
+    messageInput.addEventListener('input', () => {
+        let charCount = messageInput.value.length;
+        if (charCount > 500) {
+            messageInput.value = messageInput.value.slice(0, 500); // Trim excess
+            charCount = 500;
+        }
+        wordCountDisplay.textContent = `${charCount} / 500 characters`;
+    });
+
     // Optional: Handle connection and disconnection events for debugging or UI feedback
     socket.on('connect', () => {
         console.log('Connected to server', socket.id);
-        // You could add a message to the chat like "You are connected"
-        // addMessage('You are connected.');
     });
 
     socket.on('disconnect', () => {
         console.log('Disconnected from server');
-        // You could add a message like "You have been disconnected"
-        // addMessage('You have been disconnected.');
     });
-
-}); 
+});

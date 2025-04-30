@@ -55,4 +55,18 @@ body {
 
 #send-button:hover {
     background: #1e7bcd;
-} 
+}
+
+#user-count {
+    padding: 0.75rem 1rem;
+    background-color: #e0e0e0;
+    font-weight: bold;
+    border-bottom: 1px solid #ccc;
+}
+
+#word-count {
+    margin-left: auto;
+    align-self: center;
+    font-size: 0.9rem;
+    color: #666;
+}
