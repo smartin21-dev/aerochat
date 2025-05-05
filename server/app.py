@@ -24,6 +24,9 @@ socketio = SocketIO(app)
 MESSAGE_COOLDOWN = 3  # seconds between messages
 user_last_message = defaultdict(float)  # Track last message time for each user
 
+# Admin configuration
+admin_sid = None  # Store the admin's session ID
+
 # Spam detection configuration
 SPAM_PATTERNS = [
     r'(?i)(buy|sell|discount|offer|deal|price|cheap|free|limited)',
@@ -85,14 +88,23 @@ def generate_username():
 
 @socketio.on('set_username')
 def handle_set_username(data):
+    global admin_sid
     sid = request.sid
     username = data.get('username')
 
+    # Check if this is the first user (will be admin)
+    is_admin = admin_sid is None
+    if is_admin:
+        admin_sid = sid
+        username = f"[ADMIN] {username}" if username else "[ADMIN] " + generate_username()
+
     if not username:
         fallback = generate_username()
+        if is_admin:
+            fallback = f"[ADMIN] {fallback}"
         users[sid] = fallback
         active_names.add(fallback)
-        emit('assign_username', {'username': fallback})
+        emit('assign_username', {'username': fallback, 'is_admin': is_admin})
         emit('message', {'msg': f"{fallback} joined the chat."}, broadcast=True)
         emit('update_user_list', list(users.values()), broadcast=True)
         return
@@ -100,19 +112,22 @@ def handle_set_username(data):
     if username not in active_names:
         users[sid] = username
         active_names.add(username)
-        emit('assign_username', {'username': username})
+        emit('assign_username', {'username': username, 'is_admin': is_admin})
         emit('message', {'msg': f"{username} joined the chat."}, broadcast=True)
         emit('update_user_list', list(users.values()), broadcast=True)
     else:
         fallback = generate_username()
+        if is_admin:
+            fallback = f"[ADMIN] {fallback}"
         users[sid] = fallback
         active_names.add(fallback)
-        emit('assign_username', {'username': fallback})
+        emit('assign_username', {'username': fallback, 'is_admin': is_admin})
         emit('message', {'msg': f"{fallback} joined the chat."}, broadcast=True)
         emit('update_user_list', list(users.values()), broadcast=True)
 
 @socketio.on('disconnect')
 def handle_disconnect():
+    global admin_sid
     sid = request.sid
     username = users.pop(sid, None)
     if username:
@@ -123,6 +138,9 @@ def handle_disconnect():
         # Remove voteskip vote if user had voted
         if sid in voteskips:
             voteskips.remove(sid)
+        # If admin disconnects, clear admin status
+        if sid == admin_sid:
+            admin_sid = None
         emit('message', {'msg': f"{username} left the chat."}, broadcast=True)
         emit('update_user_list', list(users.values()), broadcast=True)
 
@@ -147,6 +165,24 @@ def handle_message(data):
 
     # Update last message time
     user_last_message[sid] = current_time
+    
+    # Handle admin commands
+    if sid == admin_sid:
+        if msg == '/forceskip':
+            if video_queue:
+                next_video = video_queue.pop(0)
+                emit('play_next_video', next_video, broadcast=True)
+                emit('queue_update', {'queue': video_queue}, broadcast=True)
+                emit('message', {'msg': f"[ADMIN] Video force skipped. Now playing: {next_video['title']}"}, broadcast=True)
+                voteskips.clear()  # Reset voteskips
+            else:
+                emit('message', {'msg': "No videos in queue to skip to."}, room=sid)
+            return
+        elif msg == '/clearqueue':
+            video_queue.clear()
+            emit('queue_update', {'queue': video_queue}, broadcast=True)
+            emit('message', {'msg': "[ADMIN] Video queue has been cleared."}, broadcast=True)
+            return
     
     # Handle votekick command
     if msg.startswith('/votekick '):

@@ -49,6 +49,11 @@ body.chat-active {
     line-height: 1.4;
 }
 
+#messages li .admin-username {
+    color: #ff4444;
+    font-weight: bold;
+}
+
 #sidebar {
     position: fixed;
     right: 0;

@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let pendingVideo = null;  // Store video that needs to be played once player is ready
     let messageCooldown = false;
     let cooldownTimer = null;
+    let isAdmin = false;
 
     const welcomeScreen = document.getElementById('welcome-screen');
     const randomUsernameDisplay = document.getElementById('random-username');
@@ -42,7 +43,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const item = document.createElement('li');
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        item.textContent = `[${timeStr}] ${msg}`;
+        
+        // Check if message contains an admin username
+        if (msg.includes('[ADMIN]')) {
+            const parts = msg.split(':');
+            if (parts.length > 1) {
+                const username = parts[0];
+                const message = parts.slice(1).join(':');
+                item.innerHTML = `[${timeStr}] <span class="admin-username">${username}</span>:${message}`;
+            } else {
+                item.innerHTML = `[${timeStr}] <span class="admin-username">${msg}</span>`;
+            }
+        } else {
+            item.textContent = `[${timeStr}] ${msg}`;
+        }
+        
         messages.appendChild(item);
         messages.scrollTop = messages.scrollHeight;
     }
@@ -66,6 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         socket.on('assign_username', (data) => {
             console.log('Assigned username:', data.username);
+            isAdmin = data.is_admin;
+            if (isAdmin) {
+                addMessage('You are the administrator. Available commands: /forceskip, /clearqueue');
+            }
         });
 
         socket.on('message', (data) => {
@@ -131,9 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
             playerVars: {
                 'playsinline': 1,
                 'controls': 1,
-                'autoplay': 1,
+                'autoplay': 0,  // Changed to 0 to prevent autoplay issues
                 'enablejsapi': 1,
-                'origin': window.location.origin
+                'origin': window.location.origin,
+                'rel': 0,  // Disable related videos
+                'modestbranding': 1  // Reduce YouTube branding
             },
             events: {
                 'onStateChange': onPlayerStateChange,
@@ -161,12 +182,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isPlayerReady && player && player.loadVideoById) {
                 console.log('Player ready, loading video:', videoId);
                 try {
-                    player.loadVideoById({
+                    // First cue the video
+                    player.cueVideoById({
                         videoId: videoId,
                         startSeconds: 0,
                         suggestedQuality: 'default'
                     });
-                    console.log('Video load command sent');
+                    
+                    // Then play it after a short delay to ensure proper loading
+                    setTimeout(() => {
+                        if (player && player.playVideo) {
+                            player.playVideo();
+                            console.log('Video play command sent');
+                        }
+                    }, 1000);
                 } catch (error) {
                     console.error('Error loading video:', error);
                 }
@@ -180,6 +209,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function onPlayerError(event) {
         console.error('Player Error:', event.data);
         addMessage('Error playing video. Please try another one.');
+        // Try to play the next video in queue if available
+        if (videoQueue.children.length > 0) {
+            const nextVideo = videoQueue.children[0];
+            const videoData = {
+                url: nextVideo.querySelector('.video-title').textContent,
+                title: nextVideo.querySelector('.video-title').textContent,
+                duration: nextVideo.querySelector('.video-duration').textContent
+            };
+            playVideo(videoData);
+        }
     }
 
     function onPlayerStateChange(event) {
