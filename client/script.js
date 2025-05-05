@@ -1,6 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
     let socket;
     let username = '';
+    let player;
+    let currentVideo = null;
+    let isPlayerReady = false;
+    let pendingVideo = null;  // Store video that needs to be played once player is ready
+    let messageCooldown = false;
+    let cooldownTimer = null;
 
     const welcomeScreen = document.getElementById('welcome-screen');
     const randomUsernameDisplay = document.getElementById('random-username');
@@ -14,8 +20,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const userList = document.getElementById('users');
     const toggleBtn = document.getElementById('toggle-users');
+    const charCounter = document.getElementById('char-counter');
+
+    const videoUrl = document.getElementById('video-url');
+    const addToQueueBtn = document.getElementById('add-to-queue');
+    const videoQueue = document.getElementById('video-queue');
 
     let showingAllUsers = false;
+
+    function updateCharCounter() {
+        const length = messageInput.value.length;
+        charCounter.textContent = `${length}/500`;
+        if (length > 450) {
+            charCounter.style.color = '#ff4444';
+        } else {
+            charCounter.style.color = '#666';
+        }
+    }
 
     function addMessage(msg) {
         const item = document.createElement('li');
@@ -77,6 +98,199 @@ document.addEventListener('DOMContentLoaded', () => {
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
         });
+
+        socket.on('queue_update', (data) => {
+            updateQueueDisplay(data.queue);
+        });
+
+        socket.on('play_next_video', (video) => {
+            console.log('Received play_next_video event:', video);
+            currentVideo = video;
+            playVideo(video);
+        });
+
+        socket.on('sync_video', (data) => {
+            if (player && data.videoId) {
+                player.seekTo(data.currentTime, true);
+            }
+        });
+    }
+
+    // YouTube Player API
+    window.onYouTubeIframeAPIReady = function() {
+        console.log('YouTube API Ready');
+        initializePlayer();
+    };
+
+    function initializePlayer() {
+        console.log('Initializing player');
+        player = new YT.Player('player', {
+            height: '360',
+            width: '640',
+            videoId: '',
+            playerVars: {
+                'playsinline': 1,
+                'controls': 1,
+                'autoplay': 1,
+                'enablejsapi': 1,
+                'origin': window.location.origin
+            },
+            events: {
+                'onStateChange': onPlayerStateChange,
+                'onReady': onPlayerReady,
+                'onError': onPlayerError
+            }
+        });
+    }
+
+    function onPlayerReady(event) {
+        console.log('Player is ready');
+        isPlayerReady = true;
+        // Play any pending video
+        if (pendingVideo) {
+            console.log('Playing pending video:', pendingVideo);
+            playVideo(pendingVideo);
+            pendingVideo = null;
+        }
+    }
+
+    function playVideo(video) {
+        console.log('Attempting to play video:', video);
+        const videoId = extractVideoId(video.url);
+        if (videoId) {
+            if (isPlayerReady && player && player.loadVideoById) {
+                console.log('Player ready, loading video:', videoId);
+                try {
+                    player.loadVideoById({
+                        videoId: videoId,
+                        startSeconds: 0,
+                        suggestedQuality: 'default'
+                    });
+                    console.log('Video load command sent');
+                } catch (error) {
+                    console.error('Error loading video:', error);
+                }
+            } else {
+                console.log('Player not ready, storing video for later');
+                pendingVideo = video;
+            }
+        }
+    }
+
+    function onPlayerError(event) {
+        console.error('Player Error:', event.data);
+        addMessage('Error playing video. Please try another one.');
+    }
+
+    function onPlayerStateChange(event) {
+        console.log('Player State Change:', event.data);
+        if (event.data === YT.PlayerState.ENDED) {
+            socket.emit('video_ended');
+        }
+    }
+
+    function extractVideoId(url) {
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+    }
+
+    function getVideoTitle(videoId) {
+        return new Promise((resolve) => {
+            // Try to get title from oEmbed API first (no key required)
+            fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+                .then(response => response.json())
+                .then(data => {
+                    resolve(data.title);
+                })
+                .catch(() => {
+                    // Fallback to iframe method if oEmbed fails
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.src = `https://www.youtube.com/embed/${videoId}`;
+                    
+                    iframe.onload = () => {
+                        try {
+                            const title = iframe.contentWindow.document.title;
+                            resolve(title.replace(' - YouTube', ''));
+                        } catch (e) {
+                            resolve('Unknown Title');
+                        }
+                        document.body.removeChild(iframe);
+                    };
+                    
+                    iframe.onerror = () => {
+                        resolve('Unknown Title');
+                        document.body.removeChild(iframe);
+                    };
+                    
+                    document.body.appendChild(iframe);
+                });
+        });
+    }
+
+    function formatDuration(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    function updateQueueDisplay(queue) {
+        videoQueue.innerHTML = '';
+        queue.forEach((video, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span class="video-title">${video.title}</span>
+                <span class="video-duration">${video.duration}</span>
+                <button class="remove-video" data-index="${index}">×</button>
+            `;
+            videoQueue.appendChild(li);
+        });
+
+        document.querySelectorAll('.remove-video').forEach(button => {
+            button.addEventListener('click', () => {
+                const index = parseInt(button.dataset.index);
+                socket.emit('remove_from_queue', { index });
+            });
+        });
+    }
+
+    function updateSendButtonState() {
+        if (messageCooldown) {
+            sendButton.disabled = true;
+            sendButton.style.backgroundColor = '#cccccc';
+            messageInput.disabled = true;
+            messageInput.style.backgroundColor = '#f5f5f5';
+        } else {
+            sendButton.disabled = false;
+            sendButton.style.backgroundColor = '#3390ec';
+            messageInput.disabled = false;
+            messageInput.style.backgroundColor = '#ffffff';
+        }
+    }
+
+    function startCooldown(seconds) {
+        messageCooldown = true;
+        updateSendButtonState();
+        
+        let remainingTime = seconds;
+        const originalText = sendButton.textContent;
+        
+        if (cooldownTimer) {
+            clearInterval(cooldownTimer);
+        }
+        
+        cooldownTimer = setInterval(() => {
+            remainingTime -= 0.1;
+            if (remainingTime <= 0) {
+                clearInterval(cooldownTimer);
+                messageCooldown = false;
+                sendButton.textContent = originalText;
+                updateSendButtonState();
+            } else {
+                sendButton.textContent = `Wait ${remainingTime.toFixed(1)}s`;
+            }
+        }, 100);
     }
 
     rerollButton.addEventListener('click', () => {
@@ -87,21 +301,31 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeScreen.style.display = 'none';
         mainLayout.style.display = 'flex';
         inputArea.style.display = 'flex';
+        document.body.classList.add('chat-active');
         connectSocket();
     });
 
     sendButton.addEventListener('click', () => {
         const message = messageInput.value.trim();
-        if (message) {
+        if (message && !messageCooldown) {
             socket.emit('message', { msg: message });
             messageInput.value = '';
             messageInput.focus();
+            startCooldown(3); // Start 3-second cooldown
         }
     });
 
+    messageInput.addEventListener('input', updateCharCounter);
+
     messageInput.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            sendButton.click();
+        if (event.key === 'Enter' && !messageCooldown) {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('message', { msg: message });
+                messageInput.value = '';
+                messageInput.focus();
+                startCooldown(3); // Start 3-second cooldown
+            }
             event.preventDefault();
         }
     });
@@ -110,6 +334,36 @@ document.addEventListener('DOMContentLoaded', () => {
         showingAllUsers = !showingAllUsers;
         if (socket) {
             socket.emit('refresh_user_list');
+        }
+    });
+
+    addToQueueBtn.addEventListener('click', async () => {
+        const url = videoUrl.value.trim();
+        const videoId = extractVideoId(url);
+        
+        if (videoId) {
+            try {
+                const title = await getVideoTitle(videoId);
+                const videoData = {
+                    url: url,
+                    title: title,
+                    duration: 'Unknown'
+                };
+                socket.emit('add_to_queue', videoData);
+                videoUrl.value = '';
+
+                // If this is the first video, start playing it
+                if (!currentVideo) {
+                    console.log('First video added, triggering playback');
+                    currentVideo = videoData;
+                    playVideo(videoData);
+                }
+            } catch (error) {
+                console.error('Error adding video to queue:', error);
+                addMessage('Error adding video to queue');
+            }
+        } else {
+            addMessage('Invalid YouTube URL');
         }
     });
 
