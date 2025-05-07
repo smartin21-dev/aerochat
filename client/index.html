@@ -18,49 +18,23 @@
 
     <!-- Main chat layout -->
     <div id="main-layout" style="display: none;">
-        <div id="main-content">
-            <div id="chat-container">
-                <div id="youtube-container">
-                    <div id="player"></div>
-                    <div id="queue-controls">
-                        <input id="video-url" placeholder="Enter YouTube URL" />
-                        <button id="add-to-queue">Add to Queue</button>
-                    </div>
-                    <div id="queue-list">
-                        <h4>Video Queue</h4>
-                        <ul id="video-queue"></ul>
-                    </div>
-                </div>
-                <ul id="messages"></ul>
-            </div>
+        <div id="chat-container">
+            <ul id="messages"></ul>
         </div>
 
-        <div id="sidebar">
-            <div id="user-list">
-                <h3>Users in Chat</h3>
-                <ul id="users"></ul>
-                <button id="toggle-users">Show All</button>
-            </div>
+        <div id="user-list">
+            <h3>Users in Chat</h3>
+            <ul id="users"></ul>
+            <button id="toggle-users">Show All</button>
         </div>
     </div>
 
     <div id="input-area" style="display: none;">
-        <input id="message-input" autocomplete="off" maxlength="500" />
+        <input id="message-input" autocomplete="off" />
         <button id="send-button">Send</button>
-        <div id="char-counter">0/500</div>
     </div>
 
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-    <script>
-        // Initialize YouTube API
-        function loadYouTubeAPI() {
-            var tag = document.createElement('script');
-            tag.src = "https://www.youtube.com/iframe_api";
-            var firstScriptTag = document.getElementsByTagName('script')[0];
-            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-        }
-        loadYouTubeAPI();
-    </script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
