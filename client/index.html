@@ -7,16 +7,34 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div id="chat-container">
-        <ul id="messages"></ul>
-        <div id="input-area">
-            <input id="message-input" autocomplete="off" /><button id="send-button">Send</button>
+    <!-- Welcome screen -->
+    <div id="welcome-screen">
+        <h1>Welcome to AeroChat!</h1>
+        <p>Your random username:</p>
+        <h2 id="random-username"></h2>
+        <button id="reroll-button">Reroll</button>
+        <button id="join-button">Join Chat</button>
+    </div>
+
+    <!-- Main chat layout -->
+    <div id="main-layout" style="display: none;">
+        <div id="chat-container">
+            <ul id="messages"></ul>
+        </div>
+
+        <div id="user-list">
+            <h3>Users in Chat</h3>
+            <ul id="users"></ul>
+            <button id="toggle-users">Show All</button>
         </div>
     </div>
 
-    <!-- Include Socket.IO client library -->
+    <div id="input-area" style="display: none;">
+        <input id="message-input" autocomplete="off" />
+        <button id="send-button">Send</button>
+    </div>
+
     <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-    <!-- Use url_for to generate the correct path -->
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
-</html> 
+</html>
